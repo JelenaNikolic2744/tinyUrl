@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 
+//creating schema for mongodb
 const TinyUrlSchema = new mongoose.Schema({
   originalUrl: { type: String },
   urlPart: { type: String },

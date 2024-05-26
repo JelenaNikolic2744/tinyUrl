@@ -4,6 +4,7 @@ import { nanoid } from "nanoid"
 import { validateUrlLink } from "../validation/urlValidation.js";
 import moment from "moment"
 
+//using nanoid library creating shortUrl, saving original and shortened with part of nanoid. And returning short url to client
 export async function shortUrl(req: Request, res: Response, next: NextFunction) {
     const baseUrl = "http://localhost:3000"
 
@@ -21,7 +22,6 @@ export async function shortUrl(req: Request, res: Response, next: NextFunction) 
                 originalUrl: originalUrl,
                 urlPart: random,
                 url: shortenedUrl,
-                numOfClicks: 0
             }).save()
             res.send({ url: savedUrl.url })
         }
@@ -32,6 +32,7 @@ export async function shortUrl(req: Request, res: Response, next: NextFunction) 
     }
 }
 
+//updating date and number of clicks when user uses shortened url
 export async function url(req: Request, res: Response, next: NextFunction) {
 
     let url = req.params["url"]
@@ -45,28 +46,36 @@ export async function url(req: Request, res: Response, next: NextFunction) {
         };
         await TinyUrl.updateOne({ urlPart: url }, { $push: { clicks: clicks } })
         res.redirect(foundUrl.originalUrl)
+    } else {
+        res.status(404).send({
+            message: 'url not found'
+        });
     }
 }
 
+//finding urls that are less than 24h activated
 export async function findPopular(req: Request, res: Response, next: NextFunction) {
-    let currentDay = moment().format("YYYY,MM-DD HH:mm:ss")
-    let dayBefore = moment().add(-24, 'hours').format("YYYY,MM-DD HH:mm:ss");
+    let dayBefore = moment().subtract(24, "hours").toDate();
 
-    let data = await TinyUrl.find()
-    let lastDayUrls = []
+    const popularUrls = await TinyUrl.aggregate([
+        { $unwind: "$clicks" },
+        { $match: { "clicks.timestamp": { $gte: dayBefore } } },
+        {
+            $group: {
+                _id: "$url",
+                url: { $first: "$url" },
+                originalUrl: { $first: "$originalUrl" },
+                numOfClicks: { $sum: "$clicks.numOfClicks" },
+            },
+        },
+        { $sort: { count: -1 } },
+    ]);
 
-    for (let i = 0; i < data.length; i++) {
-        for (let j = 0; j < data[i].clicks.length; j++) {
-            let timestamp = data[i].clicks[j].timestamp
-            if(new Date(dayBefore) < timestamp){
-                lastDayUrls.push(data[i].clicks[j])
-            }
-        }
+    if (popularUrls) {
+        res.send(popularUrls)
+    } else {
+        res.status(404).send({
+            message: "No activity on links in last 24h"
+        })
     }
-
-
-    // console.log(data)
-    // console.log(new Date(currentDay))
-    // console.log(dayBefore)
-    res.send(data)
 }
